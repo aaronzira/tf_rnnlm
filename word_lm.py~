@@ -112,17 +112,6 @@ flags.DEFINE_bool("use_fp16", False,
 flags.DEFINE_bool("nosave", False, "Set to force model not to be saved")
 flags.DEFINE_integer("log", 10, "How often to print information and save model: each (epoch_size/log) steps. (--log 100: each 1% --log 50: each 2%, --log 10: each 10% etc")
 
-
-
-
-flags.DEFINE_float("threshold", 20, "cutoff for compared value")
-flags.DEFINE_string("compare", "", "gt or lt")
-
-
-
-
-
-
 for param in MODEL_PARAMS_INT:
   flags.DEFINE_integer(param, None, "Manually set model %s" % param)
 for param in MODEL_PARAMS_FLOAT:
@@ -313,21 +302,12 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
     state = session.run(model.initial_state)
   predictions = []
 
-  #-#
-  #-#new_probs = []
-  #-#
-
   start_time = time.time()
   for step, (x, y) in enumerate(reader.iterator(data, model.batch_size,
                                                     model.num_steps)):
     if last_step > step: continue
 
-    ## ignore cases where the first token after START produces a large value
-    if step == 0: continue
-
-    ## this is the bug fix
-    ##fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs}
-    fetches = {"cost": model.cost, "state": model.final_state, "probs": model.logits}
+    fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs}
 
     if eval_op is not None:
       fetches["eval_op"] = eval_op
@@ -354,9 +334,6 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
     cost = vals['cost']
     state = vals['state']
     probs = vals['probs']
-    #-#
-    #-#new_probs.append(vals['probs'][0])
-    #-#
     costs += cost
     iters += model.num_steps
 
@@ -364,38 +341,16 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
     if idict is not None:
       probs = probs[0]
       next_id = np.argmax(probs)
-
-      ## indices of the top one hundred candidate words given the context
-      top_hundred = probs.argsort()[-100:][::-1]
-
-
-      ## xx is the index of the current word
-      ## yy is the index of the target word
       xx = x[0][0]
       yy = y[0][0]
-
-      ## the actual top one hundred candidate words
-      top_candidates = [idict[candidate] for candidate in top_hundred]
-      ##bad_phrase = any(idict[yy] not in idict[candidate] for candidate in top_hundred)
-
-
       prediction = {
         'word': idict[xx],
         "target": idict[yy],
         "prob": float(probs[yy]),
         "pred_word": idict[next_id],
         "pred_prob": float(probs[next_id]),
-        "in_predictions": idict[yy] in top_candidates,
         }
-
-      ## trying to find a combination of target word not being in the top-n candidates
-      ## plus a threshold loss value
-      if not prediction["in_predictions"]:
-        if prediction["pred_prob"] > 11.8:
-            ## just append the word that caused the problem and its loss value
-            predictions.append((prediction["target"],prediction["pred_prob"]))
-            break
-      ##predictions.append(prediction)
+      predictions.append(prediction)
 
     # Logging results & Saving
     if log<0 or log>100:
@@ -419,10 +374,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
   ll = -costs / np.log(10)
   if not idict:
     ret = ll if loglikes else ppl
-    #-#return ret
-    return new_probs
-    #-#
-  ## not actually concerning ourselves with perplexity now
+    return ret
   return ppl, predictions
 
 def _save_checkpoint(saver, session, name):
@@ -538,7 +490,7 @@ def main(_):
 
 
     saver = tf.train.Saver()
-    init_op = tf.global_variables_initializer()
+    init_op = tf.initialize_all_variables()
     with tf.Session() as session:
       session.run(init_op)
       if train:
@@ -577,58 +529,25 @@ def main(_):
             if not line: break
 
             idict = None
-            #-#test_data = sentence_cleaner.clean(line,word_to_id)
-            sentence,test_data = sentence_cleaner.clean(line,word_to_id)
-            #-#
+            test_data = sentence_cleaner.clean(line,word_to_id)
 
             if len(test_data) < 2:
               print(-9999)
               continue
 
-            ## adjusting prediction mode to find problematic words
             # Prediction mode
             if predict:
               inverse_dict = dict(zip(word_to_id.values(), word_to_id.keys()))
               ppl, predict = run_epoch(session, mtest, test_data, idict=inverse_dict)
-              ##res = {'ppl': ppl, 'predictions': predict}
-              ##print(json.dumps(res)+",")
-              print(" ".join(sentence))
-              print(predict)
+              res = {'ppl': ppl, 'predictions': predict}
+              print(json.dumps(res)+",")
 
             # ppl or loglikes
             else:
               o = run_epoch(session, mtest, test_data, loglikes=loglikes)
+              print(line,end="")
+              print("%.3f" % o)
 
-              #_#o = o[:-1]
-              #_#print(o)
-
-              #_#avg = np.mean(o)
-              #_#biggest = max(o)
-              #_#std = np.std(o)
-              #_#print(float(biggest-std)/std)
-              #_#print(biggest/float(avg))
-              #_#print(biggest-avg)
-
-              #_#print(" ".join(sentence))
-              #_#print(*(word[:7] for word in sentence),sep='\t')
-              #_#print("",*[float("{:.2f}".format(num)) for num in o],sep='\t')
-
-              #_#diffs = [float(val2)-val1 for val1,val2 in zip(o[:-1],o[1:-1])] #o,o[1:]
-              #_#print("","",*["{:.4f}".format(diff) for diff in diffs],sep='\t')
-
-              #_#print(np.var(diffs))
-              #_#var_of_diffs = np.var(diffs)
-
-              #_#print("{:.2f}\t{:.2f}\t{:.2f}".format(max(diffs),max(o),max(o)-max(diffs)))
-
-            #_#if FLAGS.compare == "gt":
-            #_#    if thing_to_compare > FLAGS.threshold:
-            #_#        print("{:.2f}".format(thing_to_compare))
-            #_#elif FLAGS.compare == "lt":
-            #_#    if thing_to_compare < FLAGS.threshold:
-            #_#        print("{:.2f}".format(thing_to_compare))
-            #_#else:
-            #_#    print("{:.2f}".format(thing_to_compare))
 
           if predict: print("]")
 
