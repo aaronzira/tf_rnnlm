@@ -263,10 +263,11 @@ class Model(object):
 
   def softmax(self, output, w, b, mask):
     logits = tf.matmul(output, w)+b
-    loss = tf.nn.seq2seq.sequence_loss_by_example(
-        [logits],
-        [tf.reshape(self._targets, [-1])],
-        [mask])
+    ##loss = tf.nn.seq2seq.sequence_loss_by_example(
+    ##    [logits],
+    ##    [tf.reshape(self._targets, [-1])],
+    ##    [mask])
+    loss = tf.nn.softmax(logits) ##
     return loss, logits
 
   @property
@@ -327,7 +328,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
 
     ## this is the bug fix
     ##fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs}
-    fetches = {"cost": model.cost, "state": model.final_state, "probs": model.logits}
+    fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs} ##model.logits}
 
     if eval_op is not None:
       fetches["eval_op"] = eval_op
@@ -380,22 +381,25 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
 
 
       prediction = {
-        'word': idict[xx],
+        "word": idict[xx],
         "target": idict[yy],
         "prob": float(probs[yy]),
         "pred_word": idict[next_id],
-        "pred_prob": float(probs[next_id]),
+        #"pred_next_5": top_candidates[:5],
+        #"pred_prob": float(probs[next_id]),
+        #"prob_next_100": [float(probs[word]) for word in top_candidates]
         "in_predictions": idict[yy] in top_candidates,
         }
 
       ## trying to find a combination of target word not being in the top-n candidates
       ## plus a threshold loss value
       if not prediction["in_predictions"]:
-        if prediction["pred_prob"] > 11.8:
+        #if prediction["pred_prob"] > 11.8:
+        if prediction["prob"] < 4e-6:
             ## just append the word that caused the problem and its loss value
-            predictions.append((prediction["target"],prediction["pred_prob"]))
+            predictions.append((prediction["target"],prediction["prob"]))
             break
-      ##predictions.append(prediction)
+      #predictions.append(prediction)
 
     # Logging results & Saving
     if log<0 or log>100:
@@ -418,6 +422,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
   ppl = np.exp(costs / iters)
   ll = -costs / np.log(10)
   if not idict:
+    print("not idict")
     ret = ll if loglikes else ppl
     #-#return ret
     return new_probs
@@ -589,11 +594,11 @@ def main(_):
             # Prediction mode
             if predict:
               inverse_dict = dict(zip(word_to_id.values(), word_to_id.keys()))
-              ppl, predict = run_epoch(session, mtest, test_data, idict=inverse_dict)
+              ppl, prediction = run_epoch(session, mtest, test_data, idict=inverse_dict)
               ##res = {'ppl': ppl, 'predictions': predict}
               ##print(json.dumps(res)+",")
               print(" ".join(sentence))
-              print(predict)
+              print(prediction)
 
             # ppl or loglikes
             else:
