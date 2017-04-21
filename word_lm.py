@@ -261,13 +261,14 @@ class Model(object):
         softmax_loss_function=_loss_fct)
     return loss
 
+  ## using tf.nn.seq2seq.sequence_loss_by_example() was not helpful
   def softmax(self, output, w, b, mask):
     logits = tf.matmul(output, w)+b
     ##loss = tf.nn.seq2seq.sequence_loss_by_example(
     ##    [logits],
     ##    [tf.reshape(self._targets, [-1])],
     ##    [mask])
-    loss = tf.nn.softmax(logits) ##
+    loss = tf.nn.softmax(logits)
     return loss, logits
 
   @property
@@ -314,21 +315,15 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
     state = session.run(model.initial_state)
   predictions = []
 
-  #-#
-  #-#new_probs = []
-  #-#
-
   start_time = time.time()
   for step, (x, y) in enumerate(reader.iterator(data, model.batch_size,
                                                     model.num_steps)):
     if last_step > step: continue
 
-    ## ignore cases where the first token after START produces a large value
+    ## ignore cases where the first token after START has a low prob
     if step == 0: continue
 
-    ## this is the bug fix
-    ##fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs}
-    fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs} ##model.logits}
+    fetches = {"cost": model.cost, "state": model.final_state, "probs": model.probs}
 
     if eval_op is not None:
       fetches["eval_op"] = eval_op
@@ -355,9 +350,6 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
     cost = vals['cost']
     state = vals['state']
     probs = vals['probs']
-    #-#
-    #-#new_probs.append(vals['probs'][0])
-    #-#
     costs += cost
     iters += model.num_steps
 
@@ -367,39 +359,37 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
       next_id = np.argmax(probs)
 
       ## indices of the top one hundred candidate words given the context
-      top_hundred = probs.argsort()[-100:][::-1]
+      ##top_hundred = probs.argsort()[::-1][:100]#[-1:-100:-1]
+      ## the actual top one hundred candidate words
+      ##top_candidates = [idict[candidate] for candidate in top_hundred]
+      ## probabilities in descending order
+      ##probs_desc = np.sort(probs)[::-1][:100]
 
-
-      ## xx is the index of the current word
-      ## yy is the index of the target word
       xx = x[0][0]
       yy = y[0][0]
 
-      ## the actual top one hundred candidate words
-      top_candidates = [idict[candidate] for candidate in top_hundred]
-      ##bad_phrase = any(idict[yy] not in idict[candidate] for candidate in top_hundred)
-
-
+      ## xx is the index of the current word
+      ## yy is the index of the target word
+      ## next_id is the index of the predicted word
       prediction = {
         "word": idict[xx],
         "target": idict[yy],
-        "prob": float(probs[yy]),
-        "pred_word": idict[next_id],
+        "prob_target": float(probs[yy]),
+        #"predicted_word": idict[next_id],
         #"pred_next_5": top_candidates[:5],
-        #"pred_prob": float(probs[next_id]),
-        #"prob_next_100": [float(probs[word]) for word in top_candidates]
-        "in_predictions": idict[yy] in top_candidates,
+        #"predicted_word_prob": float(probs[next_id]),
+        #"prob_next_100": probs_desc,
+        #"in_predictions": idict[yy] in top_candidates,
         }
 
       ## trying to find a combination of target word not being in the top-n candidates
       ## plus a threshold loss value
-      if not prediction["in_predictions"]:
-        #if prediction["pred_prob"] > 11.8:
-        if prediction["prob"] < 4e-6:
-            ## just append the word that caused the problem and its loss value
-            predictions.append((prediction["target"],prediction["prob"]))
-            break
-      #predictions.append(prediction)
+      #if not prediction["in_predictions"]:
+        #if prediction["prob"] < 4e-6:
+            ## just append the first word that caused the problem and its loss value
+            #predictions.append((prediction["target"],prediction["prob"]))
+            #break
+      predictions.append((prediction["target"],prediction["prob_target"]))
 
     # Logging results & Saving
     if log<0 or log>100:
@@ -422,12 +412,8 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
   ppl = np.exp(costs / iters)
   ll = -costs / np.log(10)
   if not idict:
-    print("not idict")
     ret = ll if loglikes else ppl
-    #-#return ret
-    return new_probs
-    #-#
-  ## not actually concerning ourselves with perplexity now
+    return ret
   return ppl, predictions
 
 def _save_checkpoint(saver, session, name):
@@ -582,9 +568,7 @@ def main(_):
             if not line: break
 
             idict = None
-            #-#test_data = sentence_cleaner.clean(line,word_to_id)
             sentence,test_data = sentence_cleaner.clean(line,word_to_id)
-            #-#
 
             if len(test_data) < 2:
               print(-9999)
@@ -597,8 +581,11 @@ def main(_):
               ppl, prediction = run_epoch(session, mtest, test_data, idict=inverse_dict)
               ##res = {'ppl': ppl, 'predictions': predict}
               ##print(json.dumps(res)+",")
-              print(" ".join(sentence))
-              print(prediction)
+
+              ## don't bother looking at the prob of END token
+              if any([pred < 8e-7 for (_,pred) in prediction[:-1]]):
+                print(" ".join(sentence))
+                print(*[(word,pred) for (word,pred) in prediction[:-1] if pred < 8e-7])
 
             # ppl or loglikes
             else:
@@ -607,7 +594,7 @@ def main(_):
               #_#o = o[:-1]
               #_#print(o)
 
-              #_#avg = np.mean(o)
+              #_#avg = np.mean
               #_#biggest = max(o)
               #_#std = np.std(o)
               #_#print(float(biggest-std)/std)
