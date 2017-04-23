@@ -583,9 +583,11 @@ def main(_):
               ##print(json.dumps(res)+",")
 
               ## don't bother looking at the prob of END token
-              if any([pred < 8e-7 for (_,pred) in prediction[:-1]]):
+              if any([pred < 1e-6 for (_,pred) in prediction[:-1]]):
+              ##preds = [pred for (_,pred) in prediction[:-1]]
+              ##print(sum(preds)/len(preds))
                 print(" ".join(sentence))
-                print(*[(word,pred) for (word,pred) in prediction[:-1] if pred < 8e-7])
+                print(*[(word,pred) for (word,pred) in prediction[:-1]]) #if pred < 1e-6])
 
             # ppl or loglikes
             else:
