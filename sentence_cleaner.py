@@ -43,7 +43,7 @@ def clean(text,word_to_id):
     # hyphens
     cleaned = re.sub("-", " ", cleaned)
     # numbers
-    sentence = re.sub(numbers,"N",cleaned)
+    sentence = re.sub(numbers,"NUMBER",cleaned)
 
     sentence = "{} {} {}".format(sentence_start_token,sentence,sentence_end_token)
 
