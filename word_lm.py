@@ -362,6 +362,8 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
       ##top_hundred = probs.argsort()[::-1][:100]#[-1:-100:-1]
       ## the actual top one hundred candidate words
       ##top_candidates = [idict[candidate] for candidate in top_hundred]
+      #top_five = probs.argsort()[::-1][:8]
+      #top_candidates = [idict[candidate] for candidate in top_five if candidate not in [0,1,2,21]] # hardcoded 21 (for UNK)
       ## probabilities in descending order
       ##probs_desc = np.sort(probs)[::-1][:100]
 
@@ -389,7 +391,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
             ## just append the first word that caused the problem and its loss value
             #predictions.append((prediction["target"],prediction["prob"]))
             #break
-      predictions.append((prediction["target"],prediction["prob_target"]))
+      predictions.append((prediction["target"],prediction["prob_target"]))#, prediction["pred_next_5"]))
 
     # Logging results & Saving
     if log<0 or log>100:
@@ -582,12 +584,14 @@ def main(_):
               ##res = {'ppl': ppl, 'predictions': predict}
               ##print(json.dumps(res)+",")
 
+              #print(" ".join(sentence))
+              #print(*[(word,pred,next_words) for (word,pred,next_words) in prediction[:-1]])
               ## don't bother looking at the prob of END token
               if any([pred < 1e-6 for (_,pred) in prediction[:-1]]):
               ##preds = [pred for (_,pred) in prediction[:-1]]
               ##print(sum(preds)/len(preds))
                 print(" ".join(sentence))
-                print(*[(word,pred) for (word,pred) in prediction[:-1]]) #if pred < 1e-6])
+                print(*[(word,pred) for (word,pred) in prediction[:-1] if pred < 1e-6])
 
             # ppl or loglikes
             else:
