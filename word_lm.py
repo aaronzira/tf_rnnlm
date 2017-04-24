@@ -370,7 +370,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
       # selecting potential substitutes by probs and Levenshtein distance
       target_word = idict[yy]
       top_candidates = [idict[candidate] for candidate in top_hundred if candidate not in [0,1,2,21]] # hardcoded 21 (for UNK)
-      near_matches = [word for (word,ratio) in process.extract(target_word,top_candidates,limit=5)]
+      near_matches = [word for (word,ratio) in process.extract(target_word,top_candidates,limit=5) if word != target_word]
 
       ## probabilities in descending order (best choices from the model)
       ##probs_desc = np.sort(probs)[::-1][:100]
