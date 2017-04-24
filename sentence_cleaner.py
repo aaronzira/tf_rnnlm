@@ -17,9 +17,8 @@ def clean(text,word_to_id):
     pattern = "|".join([timestamps,speakers,metas,punctuation,new_line])
     # non-lexical utterances
     fillers = "mm-hm+|uh-huh" #uh+|um+|hm+ later
-    # numbers not part of a word like CO2, 3D, etc.
-    # still possible for things like 3-D to cause issues
-    numbers = "(?<!\w)\d+(?!\w)"
+    # numbers not at of the end of a word like CO2, mp3, etc.
+    numbers = "(?<!\w)\d+"
 
     # subs
     # timestamps, speakers, metas, punctuation, newlines
@@ -43,7 +42,7 @@ def clean(text,word_to_id):
     # hyphens
     cleaned = re.sub("-", " ", cleaned)
     # numbers
-    sentence = re.sub(numbers,"NUMBER",cleaned)
+    sentence = re.sub(numbers,"N",cleaned)
 
     sentence = "{} {} {}".format(sentence_start_token,sentence,sentence_end_token)
 
