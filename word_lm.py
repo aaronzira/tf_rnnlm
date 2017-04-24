@@ -65,6 +65,8 @@ import json
 import numpy as np
 import tensorflow as tf
 import sys
+
+from fuzzywuzzy import process
 # We put config in a separate file so that loading a config object does (using pickle)
 # import this file twice (which triggers error)
 from config import *
@@ -357,28 +359,32 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
     if idict is not None:
       probs = probs[0]
       next_id = np.argmax(probs)
-
-      ## indices of the top one hundred candidate words given the context
-      ##top_hundred = probs.argsort()[::-1][:100]#[-1:-100:-1]
-      ## the actual top one hundred candidate words
-      ##top_candidates = [idict[candidate] for candidate in top_hundred]
-      #top_five = probs.argsort()[::-1][:8]
-      #top_candidates = [idict[candidate] for candidate in top_five if candidate not in [0,1,2,21]] # hardcoded 21 (for UNK)
-      ## probabilities in descending order
-      ##probs_desc = np.sort(probs)[::-1][:100]
-
       xx = x[0][0]
       yy = y[0][0]
+
+      ## indices of the top one hundred candidate words given the context
+      top_hundred = probs.argsort()[::-1][:100]#[-1:-100:-1]
+      ## the actual top one hundred candidate words
+      ##top_candidates = [idict[candidate] for candidate in top_hundred]
+
+      # selecting potential substitutes by probs and Levenshtein distance
+      target_word = idict[yy]
+      top_candidates = [idict[candidate] for candidate in top_hundred if candidate not in [0,1,2,21]] # hardcoded 21 (for UNK)
+      near_matches = [word for (word,ratio) in process.extract(target_word,top_candidates,limit=5)]
+
+      ## probabilities in descending order (best choices from the model)
+      ##probs_desc = np.sort(probs)[::-1][:100]
 
       ## xx is the index of the current word
       ## yy is the index of the target word
       ## next_id is the index of the predicted word
       prediction = {
         "word": idict[xx],
-        "target": idict[yy],
+        "target": target_word,
         "prob_target": float(probs[yy]),
         #"predicted_word": idict[next_id],
         #"pred_next_5": top_candidates[:5],
+        "pred_next_5": near_matches,
         #"predicted_word_prob": float(probs[next_id]),
         #"prob_next_100": probs_desc,
         #"in_predictions": idict[yy] in top_candidates,
@@ -391,7 +397,7 @@ def run_epoch(session, model, data, eval_op=None, verbose=False, idict=None, sav
             ## just append the first word that caused the problem and its loss value
             #predictions.append((prediction["target"],prediction["prob"]))
             #break
-      predictions.append((prediction["target"],prediction["prob_target"]))#, prediction["pred_next_5"]))
+      predictions.append((prediction["target"],prediction["prob_target"],prediction["pred_next_5"]))
 
     # Logging results & Saving
     if log<0 or log>100:
@@ -584,14 +590,14 @@ def main(_):
               ##res = {'ppl': ppl, 'predictions': predict}
               ##print(json.dumps(res)+",")
 
-              #print(" ".join(sentence))
-              #print(*[(word,pred,next_words) for (word,pred,next_words) in prediction[:-1]])
+              print(" ".join(sentence))
+              print(*[(word,pred,next_words) for (word,pred,next_words) in prediction[:-1]])
               ## don't bother looking at the prob of END token
-              if any([pred < 1e-6 for (_,pred) in prediction[:-1]]):
+              #if any([pred < 1e-6 for (_,pred) in prediction[:-1]]):
               ##preds = [pred for (_,pred) in prediction[:-1]]
               ##print(sum(preds)/len(preds))
-                print(" ".join(sentence))
-                print(*[(word,pred) for (word,pred) in prediction[:-1] if pred < 1e-6])
+                #print(" ".join(sentence))
+                #print(*[(word,pred) for (word,pred) in prediction[:-1] if pred < 1e-6])
 
             # ppl or loglikes
             else:
